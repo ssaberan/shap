@@ -38,7 +38,7 @@ class SHAP:
         row_index,
         null_prediction=None,
         sample_size_for_null_prediction=10000,
-        sample_size_for_expected_prediction=100,
+        sample_size_for_expected_prediction=1000,
     ):
         if null_prediction:
             self.null_prediction = null_prediction
@@ -58,11 +58,11 @@ class SHAP:
         self, model, data_without_label, row_index, sample_size_for_expected_prediction
     ):
         self.expected_predictions = {}
+        self.expected_predictions[frozenset(self.column_indices)] = self.true_prediction
         for permutation in itertools.permutations(self.column_indices):
-            self.expected_predictions[permutation] = self.true_prediction
             for i in range(1, len(permutation)):
                 custom_samples = []
-                features_to_keep = permutation[:i]
+                features_to_keep = frozenset(permutation[:i])
                 if features_to_keep not in self.expected_predictions:
                     for _ in range(sample_size_for_expected_prediction):
                         custom_samples.append(
@@ -82,13 +82,13 @@ class SHAP:
                 sub_permutation = permutation[:i]
                 if len(sub_permutation) == 1:
                     marginal_contributions[sub_permutation[-1]].append(
-                        self.expected_predictions[sub_permutation]
+                        self.expected_predictions[frozenset(sub_permutation)]
                         - self.null_prediction
                     )
                 else:
                     marginal_contributions[sub_permutation[-1]].append(
-                        self.expected_predictions[sub_permutation]
-                        - self.expected_predictions[sub_permutation[:-1]]
+                        self.expected_predictions[frozenset(sub_permutation)]
+                        - self.expected_predictions[frozenset((sub_permutation[:-1]))]
                     )
         return [np.mean(marginal_contributions[i]) for i in marginal_contributions]
 
@@ -106,25 +106,31 @@ class SHAP:
                         ):
                             if len(sub_permutation) == 0:
                                 marginal_contributions[pair].append(
-                                    self.expected_predictions[sub_permutation + pair]
-                                    - self.expected_predictions[
-                                        sub_permutation + (pair[0],)
+                                    self.expected_predictions[
+                                        frozenset(sub_permutation + pair)
                                     ]
                                     - self.expected_predictions[
-                                        sub_permutation + (pair[1],)
+                                        frozenset(sub_permutation + (pair[0],))
+                                    ]
+                                    - self.expected_predictions[
+                                        frozenset(sub_permutation + (pair[1],))
                                     ]
                                     + self.null_prediction
                                 )
                             else:
                                 marginal_contributions[pair].append(
-                                    self.expected_predictions[sub_permutation + pair]
-                                    - self.expected_predictions[
-                                        sub_permutation + (pair[0],)
+                                    self.expected_predictions[
+                                        frozenset(sub_permutation + pair)
                                     ]
                                     - self.expected_predictions[
-                                        sub_permutation + (pair[1],)
+                                        frozenset(sub_permutation + (pair[0],))
                                     ]
-                                    + self.expected_predictions[sub_permutation]
+                                    - self.expected_predictions[
+                                        frozenset(sub_permutation + (pair[1],))
+                                    ]
+                                    + self.expected_predictions[
+                                        frozenset(sub_permutation)
+                                    ]
                                 )
         return {
             pair: np.mean(marginal_contributions[pair])
